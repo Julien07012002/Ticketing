@@ -1,0 +1,121 @@
+{# Vue principale #}
+{% extends 'base.html.twig' %}
+
+{% block title %}Ticketing{% endblock %}
+
+{% block body %}
+    {% if not app.user.active %}
+        <div class="badge bg-warning text-lime-50 w-full h-10 p-4">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor"
+                 class="bi bi-exclamation-triangle" viewBox="0 0 16 16">
+                <path d="M7.938 2.016A.13.13 0 0 1 8.002 2a.13.13 0 0 1 .063.016.146.146 0 0 1 .054.057l6.857 11.667c.036.06.035.124.002.183a.163.163 0 0 1-.054.06.116.116 0 0 1-.066.017H1.146a.115.115 0 0 1-.066-.017.163.163 0 0 1-.054-.06.176.176 0 0 1 .002-.183L7.884 2.073a.147.147 0 0 1 .054-.057zm1.044-.45a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566z"></path>
+                <path d="M7.002 12a1 1 0 1 1 2 0 1 1 0 0 1-2 0zM7.1 5.995a.905.905 0 1 1 1.8 0l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995z"></path>
+            </svg>
+            <div>
+                Vous devez changer votre mot de passe. {{ include('_reset_password.html.twig', {'user':app.user}) }}
+            </div>
+        </div>
+    {% endif %}
+    <div>
+        {% if "ROLE_ADMIN" in app.user.roles %}
+            <div>
+                {% if dashboard == true %}
+                    <h1 class="text-center font-extrabold m-3">Tableau de bord administratif</h1>
+                    <div class="grid grid-cols-3 gap-4">
+                        {% for service in serviceLst %}
+                            <div class="bg-gray-300 rounded-lg p-4">
+                                <a href="{{ path('app_historic_by_service',{'service':service.id}) }}">{# Possibilité de cliquer pour avoir + d'information #}
+                                    <div class="text-center">
+                                        <span class="badge badge-secondary">{{ service.name }}</span>
+                                    </div>
+                                    <div class="chart-container"
+                                         style="position: relative; height:40vh; width:80vw; margin-left: 20%">
+                                        <canvas id="canvaService{{ service.id }}"></canvas>
+                                    </div>
+                                    <div class="mt-1 grid grid-cols-3 justify-center justify-items-center">
+                                        <span id="waitingBadgeIdService{{ service.id }}"
+                                              class="badge badge-error">-</span>{# Nombre de tickets en attente qui se met à jour après le chargement du contenu du DOM #}
+                                        <span id="inProgressBadgeIdService{{ service.id }}"
+                                              class="badge badge-info">-</span>
+                                        <span id="closeBadgeIdService{{ service.id }}"
+                                              class="badge badge-success">-</span>
+                                    </div>
+                                </a>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    {{ include('ticket/see.one_service_tickets.html.twig') }}
+                {% endif %}
+            </div>
+            <div class="mt-3 ml-2 mb-3 grid grid-cols-3 gap-4">
+                {% if dashboard %}
+                    <a href="{{ path('app_main') }}?dashboard=false" class="btn btn-success w-full">VOIR LES TICKETS DE
+                        MON
+                        SERVICE</a>
+                {% else %}
+                    <a href="{{ path('app_main') }}" class="btn btn-success w-full">VOIR LE DASHBOARD</a>
+                {% endif %}
+                <a href="{{ path('app_user') }}" class="btn btn-primary w-full">GESTION DES UTILISATEURS</a>
+                <a href="{{ path('app_configuration_mail') }}" class="btn btn-primary w-full">PARAMETRE MAIL</a>
+            </div>
+        {% else %}{# L'utilisateur n'est pas ADMIN -> Mode user #}
+            {{ include('ticket/see.one_service_tickets.html.twig') }}
+        {% endif %}
+    </div>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            let ctx;
+            let chart;
+            let ms = [];
+            {% for service in serviceLst %}/*On parcours la liste des services*/
+            ctx = document.getElementById('canvaService{{ service.id }}');
+
+            //Création de la requête AJAX en POST
+            $.ajax({
+                type: 'POST',
+                url: '{{ path('app_api_count_tickets_service', {'service':service.id}) }}',
+                data: {_csrf_token: "{{ csrf_token('api-count'~service.id) }}"},
+                success: function (response) {//s'il n'y pas d'erreur
+                    if (response !== 500) {//la route peut retourner new JsonResponse(500)
+                        ms["{{ service.id }}"].data.datasets[0].data[0] = parseFloat(response[0]);//Set du data par rapport à la response dans le Chart
+                        ms["{{ service.id }}"].data.datasets[0].data[1] = parseFloat(response[1]);
+                        ms["{{ service.id }}"].data.datasets[0].data[2] = parseFloat(response[2]);
+                        //tableau de longueur 3 car il y a 3 types de tickets
+                        ms["{{ service.id }}"].update();
+                        console.log(response);
+                        $('#waitingBadgeIdService{{ service.id }}').html("Ticket EN ATTENTE: " + response[0]);//Mise a jour du badge qui affiche le nombre de tickets
+                        $('#inProgressBadgeIdService{{ service.id }}').html("Ticket EN COURS: " + response[1]);
+                        $('#closeBadgeIdService{{ service.id }}').html("Ticket FERMÉ: " + response[2]);
+                    } else {
+                        console.error('Erreur lors de la requête. (500)');
+                    }
+                },
+                error: function (error) {//il peut avoir une erreur
+                    console.error('Erreur lors de la requête. ' + error.toString());
+                }
+            });
+
+            //Création d'un diagramme
+            chart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '',
+                        data: [0, 0, 0],//défaut 3 types de valeur 0, c'est le poids que ça prendra dans le diagramme
+                        backgroundColor: [
+                            'rgb(224, 61, 97)',
+                            'rgb(164, 199, 239)',
+                            'rgb(24, 175, 130)'
+                        ],
+                        hoverOffset: 2
+                    }],
+                }
+            });
+            ms["{{ service.id }}"] = chart;
+            {% endfor %}
+            console.log(ms);
+        });
+    </script>
+{% endblock %}

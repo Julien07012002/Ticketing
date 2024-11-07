@@ -1,0 +1,32 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Ticketing | Paramètre de mon compte{% endblock %}
+
+{% block body %}
+    {% set user = app.user %}
+    <div class="flex flex-col justify-center items-center align-middle">
+        <div class="card w-96 bg-base-100 shadow-xl">
+            <div class="card-body text-center">
+                <h1>Vous êtes {{ user.username }}</h1>
+                <div class="card-title">
+                    <p class="badge badge-secondary">{{ "Service: "~user.service.name }}</p>
+                    <p class="badge badge-ghost">{{ user.firstname ~ " " ~ user.name }}</p>
+                </div>
+                <div class="card-actions grid grid-cols-2 gap-4">
+                    <div>
+                        <a href="{{ path('app_main') }}" class="btn btn-info">
+                            Retour
+                        </a>
+                    </div>
+                    <div>
+                        {% if app.user.active %}
+                            {{ include('_reset_password.html.twig', {'user':app.user,'label': 'CHANGER DE MOT DE PASSE'}) }}
+                        {% else %}
+                            {{ include('_reset_password.html.twig', {'user':app.user,'label': 'CHANGER DE MOT DE PASSE'}) }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}
